@@ -254,28 +254,37 @@ def _iterparse(file_path, target):
             target.end(element.tag)
     return target.close()
 
+def get_case_insensitive_path(parent_path: Path, file: str):
+    """
+    Returns a `Path` object matching `parent_path/file`, using `file`'s actual casing "on disk".
+    Works on case-sensitive systems where `file`'s casing may differs from the provided value.
+
+    Returns a `Path` object for `parent_path/file` if no match could be found.
+    """
+    for candidate_file in os.listdir(parent_path):
+        if candidate_file.lower() == file.lower():
+            return parent_path / candidate_file
+    return parent_path / file
 
 def parse(source, warnings=None, lineno=False):
     if isinstance(source, (tuple, list)):
         info, conf = source
     else:
-        for f in os.listdir(Path(source)):
-            path = Path(source) / f
-            if path.is_dir() and f.lower() == "fomod":
-                break
-        else:
+        path = get_case_insensitive_path(source, "fomod")
+        if not path.is_dir():
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "fomod")
-        info, conf = None, None
-        for f in os.listdir(Path(path)):
-            filepath = Path(path) / f
-            if filepath.is_file() and f.lower() == "info.xml" and info is None:
-                info = str(filepath)
-            if filepath.is_file() and f.lower() == "moduleconfig.xml" and conf is None:
-                conf = str(filepath)
-        if conf is None:
+        info = get_case_insensitive_path(path, "info.xml")
+        conf = get_case_insensitive_path(path, "moduleconfig.xml")
+        if not info.is_file():
+            info = None
+        else:
+            info = str(info)
+        if not conf.is_file():
             raise FileNotFoundError(
                 errno.ENOENT, os.strerror(errno.ENOENT), "moduleconfig.xml"
             )
+        else:
+            conf = str(conf)
     if warnings is not None:
         schema = etree.XMLSchema(etree.parse(str(SCHEMA_PATH)))
         try:
@@ -304,10 +313,10 @@ def write(root, path):
             info = Path(info)
         conf = Path(path[1])
     else:
-        path = Path(path) / "fomod"
+        path = get_case_insensitive_path(Path(path), "fomod")
         path.mkdir(parents=True, exist_ok=True)
-        info = path / "info.xml"
-        conf = path / "moduleconfig.xml"
+        info = get_case_insensitive_path(path, "info.xml")
+        conf = get_case_insensitive_path(path, "moduleconfig.xml")
     if info is not None:
         with info.open("w") as info_f:
             info_f.write(root._info.to_string())
